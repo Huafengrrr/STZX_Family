@@ -38,55 +38,60 @@
             android:textSize="13sp" />
     </LinearLayout>
 
-    <!-- 右上角功能按钮组 -->
+    <!-- 右侧按钮区域：竖排，白色圆角卡片风格 -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_marginTop="20dp"
-        android:layout_marginEnd="20dp"
-        android:orientation="horizontal">
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_card_white"
+        android:elevation="6dp"
+        android:orientation="vertical"
+        android:padding="4dp">
 
         <!-- 历史轨迹按钮 -->
-        <FrameLayout
+        <ImageButton
             android:id="@+id/layout_history"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_card_white"
-            android:elevation="6dp"
-            android:padding="10dp">
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_history" />
 
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@android:drawable/ic_menu_recent_history"
-                android:tint="@color/accent" />
-        </FrameLayout>
+        <!-- 分隔线 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:background="@color/divider" />
 
         <!-- 报警按钮 -->
         <FrameLayout
             android:id="@+id/layout_alarm"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card_white"
-            android:elevation="6dp"
-            android:padding="10dp">
+            android:layout_width="48dp"
+            android:layout_height="48dp">
 
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:src="@android:drawable/ic_lock_idle_alarm"
-                android:tint="@color/status_danger" />
+            <ImageButton
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_alarm" />
 
             <View
                 android:id="@+id/view_red_dot"
                 android:layout_width="10dp"
                 android:layout_height="10dp"
                 android:layout_gravity="top|end"
+                android:layout_margin="2dp"
                 android:background="@drawable/shape_red_dot"
                 android:visibility="gone" />
         </FrameLayout>
+
     </LinearLayout>
 
     <!-- 底部设备切换标签栏 -->
@@ -105,8 +110,8 @@
             android:id="@+id/layout_device_tabs"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
     </HorizontalScrollView>
 
 </FrameLayout>
