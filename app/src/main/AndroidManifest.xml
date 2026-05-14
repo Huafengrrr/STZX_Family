@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.STZX_Family">
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="66eafa772acc05e7a8e587b4bd69074e" />
+
+        <!-- 🌟 修改 1：将 APP 的默认启动页设置为新写的 LoginActivity -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 🌟 修改 2：注册盲杖配对绑定页面 -->
+        <activity
+            android:name=".BindActivity"
+            android:exported="false" />
+
+        <!-- 🌟 修改 3：保留原来的地图主界面，但它不再是第一启动页了 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <!-- 🌟 新增：我的设备页面 -->
+        <activity
+            android:name=".DeviceActivity"
+            android:exported="false" />
+
+        <!-- 🌟 新增：用户中心页面 -->
+        <activity
+            android:name=".UserActivity"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

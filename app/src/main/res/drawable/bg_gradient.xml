@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 极具科技感的蓝紫渐变底色 -->
+    <gradient
+        android:startColor="#2b5876"
+        android:endColor="#4e4376"
+        android:angle="135"/>
+</shape>

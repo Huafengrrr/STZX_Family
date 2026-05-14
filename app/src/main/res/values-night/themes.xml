@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.STZX_Family" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">#FF1C1C1E</item>
+        <item name="android:statusBarColor">#FF1C1C1E</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryDark">@color/accent_dark</item>
+        <item name="colorAccent">@color/accent</item>
+    </style>
+</resources>

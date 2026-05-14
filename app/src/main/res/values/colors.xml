@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 基础色 -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 极简白灰主题 -->
+    <color name="bg_page">#FFF5F5F7</color>
+    <color name="bg_card">#FFFFFFFF</color>
+    <color name="bg_card_secondary">#FFF2F2F7</color>
+
+    <!-- 文字色 -->
+    <color name="text_primary">#FF1C1C1E</color>
+    <color name="text_secondary">#FF8E8E93</color>
+    <color name="text_hint">#FFAEAEB2</color>
+
+    <!-- 强调色 -->
+    <color name="accent">#FF007AFF</color>
+    <color name="accent_dark">#FF0051D5</color>
+
+    <!-- 状态色 -->
+    <color name="status_danger">#FFFF3B30</color>
+    <color name="status_safe">#FF34C759</color>
+    <color name="status_warn">#FFFF9500</color>
+
+    <!-- 分割线/边框 -->
+    <color name="divider">#FFE5E5EA</color>
+    <color name="stroke_light">#FFD1D1D6</color>
+</resources>
