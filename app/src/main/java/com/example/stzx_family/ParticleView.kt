@@ -59,14 +59,28 @@ class ParticleView @JvmOverloads constructor(
 
     private fun initParticles(width: Int, height: Int) {
         particles.clear()
-        val count = 8 + random.nextInt(4) // 8-11 个粒子
+        val count = 12 + random.nextInt(5) // 12-16 个粒子
         repeat(count) {
-            particles.add(createParticle(width, height, true))
+            particles.add(createParticle(width, height))
         }
     }
 
-    private fun createParticle(w: Int, h: Int, randomY: Boolean): Particle {
-        val y = if (randomY) random.nextFloat() * h else h.toFloat() + 20f
+    /**
+     * 生成偏向屏幕上半部分的 Y 坐标
+     * 70% 概率在上半部分，30% 在下半部分
+     */
+    private fun generateY(h: Int): Float {
+        return if (random.nextFloat() < 0.7f) {
+            // 70%：上半部分（0 ~ h*0.55）
+            random.nextFloat() * h * 0.55f
+        } else {
+            // 30%：下半部分（h*0.55 ~ h）
+            h * 0.55f + random.nextFloat() * h * 0.45f
+        }
+    }
+
+    private fun createParticle(w: Int, h: Int): Particle {
+        val y = generateY(h)
         val colors = listOf(
             Color.parseColor("#FFD1D1D6"), // 浅灰
             Color.parseColor("#FFE5E5EA"), // 更浅
@@ -94,9 +108,9 @@ class ParticleView @JvmOverloads constructor(
             if (p.x < -p.radius || p.x > w + p.radius) {
                 p.speedX *= -1
             }
-            // 飘出顶部后重置到底部
+            // 飘出顶部后重置，70% 概率在上半部分重生
             if (p.y < -p.radius * 3) {
-                p.y = h + p.radius * 3
+                p.y = generateY(h)
                 p.x = random.nextFloat() * w
                 p.speedX = (random.nextFloat() - 0.5f) * 0.3f
             }
