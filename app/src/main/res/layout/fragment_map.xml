@@ -38,7 +38,7 @@
             android:textSize="13sp" />
     </LinearLayout>
 
-    <!-- 右侧按钮区域：竖排，白色圆角卡片风格 -->
+    <!-- 右侧按钮区域：横排，白色圆角卡片风格 -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -47,7 +47,7 @@
         android:layout_marginEnd="16dp"
         android:background="@drawable/bg_card_white"
         android:elevation="6dp"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:padding="4dp">
 
         <!-- 历史轨迹按钮 -->
@@ -60,12 +60,12 @@
             android:scaleType="centerInside"
             android:src="@drawable/ic_history" />
 
-        <!-- 分隔线 -->
+        <!-- 垂直分隔线 -->
         <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp"
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
             android:background="@color/divider" />
 
         <!-- 报警按钮 -->
