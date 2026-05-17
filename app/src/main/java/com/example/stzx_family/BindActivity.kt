@@ -105,7 +105,14 @@ class BindActivity : AppCompatActivity() {
                                 Toast.makeText(this@BindActivity, "绑定成功！", Toast.LENGTH_SHORT).show()
                                 val deviceId = resJson.optString("deviceId", "")
                                 if (deviceId.isNotEmpty()) {
-                                    prefs.edit().putString("BOUND_DEVICE_ID", deviceId).apply()
+                                    // 追加到多设备列表（去重）
+                                    val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+                                    val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+                                    idSet.add(deviceId)
+                                    prefs.edit()
+                                        .putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
+                                        .putString("BOUND_DEVICE_ID", deviceId) // 同时设为主设备，兼容旧逻辑
+                                        .apply()
                                 }
                                 val intent = Intent(this@BindActivity, MainActivity::class.java)
                                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

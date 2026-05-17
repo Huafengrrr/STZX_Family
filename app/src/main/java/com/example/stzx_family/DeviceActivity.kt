@@ -82,12 +82,24 @@ class DeviceActivity : AppCompatActivity() {
                 runOnUiThread {
                     try {
                         val resJson = JSONObject(resStr ?: "")
-                        if (resJson.getBoolean("success")) {
+                        if (resJson.optBoolean("success", false)) {
                             Toast.makeText(this@DeviceActivity, "解绑成功", Toast.LENGTH_SHORT).show()
-                            // 清除本地绑定信息
-                            getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE).edit()
-                                .remove("BOUND_DEVICE_ID")
-                                .apply()
+                            // 从多设备列表中移除
+                            val prefs = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
+                            val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+                            val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+                            idSet.remove(deviceId)
+                            val editor = prefs.edit()
+                            if (idSet.isEmpty()) {
+                                editor.remove("BOUND_DEVICE_IDS")
+                                editor.remove("BOUND_DEVICE_ID")
+                            } else {
+                                editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
+                                if (prefs.getString("BOUND_DEVICE_ID", "") == deviceId) {
+                                    editor.putString("BOUND_DEVICE_ID", idSet.first())
+                                }
+                            }
+                            editor.apply()
                             // 刷新页面
                             recreate()
                         } else {

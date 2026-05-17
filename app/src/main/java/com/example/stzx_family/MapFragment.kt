@@ -151,14 +151,25 @@ class MapFragment : Fragment() {
         })
     }
 
-    // 降级：从 SharedPreferences 读取单个已绑定设备
+    // 降级：从 SharedPreferences 读取所有已绑定设备
     private fun loadDeviceListFromLocal() {
         val prefs = requireActivity().getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-        val boundId = prefs.getString("BOUND_DEVICE_ID", "")
-        if (!boundId.isNullOrEmpty()) {
-            setupDeviceTabs(listOf(DeviceInfo(boundId, "online", "本地记录", getDeviceName(boundId))))
+        val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+        val idList = idsStr.split(",").filter { it.isNotEmpty() }
+        if (idList.isNotEmpty()) {
+            val devices = idList.map { devId ->
+                DeviceInfo(devId, "online", "本地记录", getDeviceName(devId))
+            }
+            setupDeviceTabs(devices)
         } else {
-            setupDeviceTabs(emptyList())
+            // 兼容旧数据
+            val boundId = prefs.getString("BOUND_DEVICE_ID", "")
+            if (!boundId.isNullOrEmpty()) {
+                prefs.edit().putString("BOUND_DEVICE_IDS", boundId).apply()
+                setupDeviceTabs(listOf(DeviceInfo(boundId, "online", "本地记录", getDeviceName(boundId))))
+            } else {
+                setupDeviceTabs(emptyList())
+            }
         }
     }
 

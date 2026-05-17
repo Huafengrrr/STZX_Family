@@ -145,21 +145,37 @@ class DeviceFragment : Fragment() {
         })
     }
 
-    // 降级方案：从 SharedPreferences 读取单个已绑定设备
+    // 降级方案：从 SharedPreferences 读取所有已绑定设备
     private fun loadFromLocal() {
         val prefs = requireActivity().getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-        val boundId = prefs.getString("BOUND_DEVICE_ID", "")
+        val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+        val idList = idsStr.split(",").filter { it.isNotEmpty() }
 
-        if (!boundId.isNullOrEmpty()) {
-            val newList = listOf(DeviceInfo(
-                deviceId = boundId,
-                status = "online",
-                lastUpdate = "本地记录",
-                name = getDeviceName(boundId)
-            ))
+        if (idList.isNotEmpty()) {
+            val newList = idList.map { devId ->
+                DeviceInfo(
+                    deviceId = devId,
+                    status = "online",
+                    lastUpdate = "本地记录",
+                    name = getDeviceName(devId)
+                )
+            }
             updateUI(newList)
         } else {
-            updateUI(emptyList())
+            // 兼容旧数据：如果 BOUND_DEVICE_IDS 为空但有 BOUND_DEVICE_ID
+            val boundId = prefs.getString("BOUND_DEVICE_ID", "")
+            if (!boundId.isNullOrEmpty()) {
+                // 迁移旧数据到多设备列表
+                prefs.edit().putString("BOUND_DEVICE_IDS", boundId).apply()
+                updateUI(listOf(DeviceInfo(
+                    deviceId = boundId,
+                    status = "online",
+                    lastUpdate = "本地记录",
+                    name = getDeviceName(boundId)
+                )))
+            } else {
+                updateUI(emptyList())
+            }
         }
     }
 
@@ -201,13 +217,25 @@ class DeviceFragment : Fragment() {
                         val resJson = JSONObject(resStr ?: "")
                         if (resJson.getBoolean("success")) {
                             Toast.makeText(requireContext(), "解绑成功", Toast.LENGTH_SHORT).show()
-                            // 如果解绑的是当前主设备，清除本地记录
+                            // 从多设备列表中移除
                             val prefs = requireActivity().getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-                            if (prefs.getString("BOUND_DEVICE_ID", "") == deviceId) {
-                                prefs.edit().remove("BOUND_DEVICE_ID").apply()
+                            val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+                            val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+                            idSet.remove(deviceId)
+                            val editor = prefs.edit()
+                            if (idSet.isEmpty()) {
+                                editor.remove("BOUND_DEVICE_IDS")
+                                editor.remove("BOUND_DEVICE_ID")
+                            } else {
+                                editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
+                                // 如果移除的是当前主设备，更新主设备为列表中的第一个
+                                if (prefs.getString("BOUND_DEVICE_ID", "") == deviceId) {
+                                    editor.putString("BOUND_DEVICE_ID", idSet.first())
+                                }
                             }
                             // 同时清除该设备的自定义名称
-                            prefs.edit().remove("DEVICE_NAME_$deviceId").apply()
+                            editor.remove("DEVICE_NAME_$deviceId")
+                            editor.apply()
                             // 从列表中移除该设备（带动画）
                             adapter.removeAt(position)
                             // 检查是否全部移除

@@ -25,11 +25,13 @@ class LoginActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
         val savedPhone = prefs.getString("PHONE", "")
         if (!savedPhone.isNullOrEmpty()) {
+            val boundIds = prefs.getString("BOUND_DEVICE_IDS", "")
             val boundId = prefs.getString("BOUND_DEVICE_ID", "")
-            val intent = if (boundId.isNullOrEmpty()) {
-                Intent(this, BindActivity::class.java)
-            } else {
+            val hasDevice = !boundIds.isNullOrEmpty() || !boundId.isNullOrEmpty()
+            val intent = if (hasDevice) {
                 Intent(this, MainActivity::class.java)
+            } else {
+                Intent(this, BindActivity::class.java)
             }
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)
@@ -110,16 +112,27 @@ class LoginActivity : AppCompatActivity() {
                             if (action == "login") {
                                 // 保存登录状态
                                 val boundId = resJson.optString("bound_device_id", "")
-                                getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE).edit()
+                                val editor = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE).edit()
                                     .putString("PHONE", phone)
-                                    .putString("BOUND_DEVICE_ID", boundId)
-                                    .apply()
+                                // 兼容：如果服务器返回单个设备ID，同时加入多设备列表
+                                if (boundId.isNotEmpty()) {
+                                    val loginPrefs = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
+                                    val idsStr = loginPrefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+                                    val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+                                    idSet.add(boundId)
+                                    editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
+                                    editor.putString("BOUND_DEVICE_ID", boundId)
+                                }
+                                editor.apply()
 
                                 // 路由跳转（清空栈，确保返回键不会回到登录页）
-                                val intent = if (boundId.isEmpty()) {
-                                    Intent(this@LoginActivity, BindActivity::class.java)
-                                } else {
+                                val loginPrefs2 = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
+                                val hasDevice = boundId.isNotEmpty() ||
+                                        !(loginPrefs2.getString("BOUND_DEVICE_IDS", "")).isNullOrEmpty()
+                                val intent = if (hasDevice) {
                                     Intent(this@LoginActivity, MainActivity::class.java)
+                                } else {
+                                    Intent(this@LoginActivity, BindActivity::class.java)
                                 }
                                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 startActivity(intent)
