@@ -94,6 +94,29 @@
 
     </LinearLayout>
 
+    <!-- 模拟行走按钮（右下角） -->
+    <FrameLayout
+        android:id="@+id/layout_sim"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="80dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_card_white"
+        android:elevation="6dp"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/btn_sim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_sim"
+            android:contentDescription="模拟行走" />
+    </FrameLayout>
+
     <!-- 底部设备切换标签栏 -->
     <HorizontalScrollView
         android:id="@+id/scroll_device_tabs"

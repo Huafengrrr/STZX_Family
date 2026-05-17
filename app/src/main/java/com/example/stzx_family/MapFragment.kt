@@ -47,6 +47,11 @@ class MapFragment : Fragment() {
     private val client = OkHttpClient()
     private var pollingTimer: Timer? = null
 
+    // 模拟行走相关
+    private var isSimMode = false
+    private var simTimer: Timer? = null
+    private var simStepIndex = 0
+
     private val trackPoints = mutableListOf<LatLng>()
     private var trackPolyline: Polyline? = null
 
@@ -84,6 +89,9 @@ class MapFragment : Fragment() {
         view.findViewById<View>(R.id.layout_history).setOnClickListener {
             if (isHistoryMode) showHistoryOrExitMenu() else showDatePicker()
         }
+
+        // 模拟行走按钮
+        view.findViewById<View>(R.id.layout_sim).setOnClickListener { toggleSimMode() }
 
         // 拉取设备列表并构建标签栏
         fetchDeviceList()
@@ -142,14 +150,16 @@ class MapFragment : Fragment() {
         layoutDeviceTabs.removeAllViews()
 
         if (devices.isEmpty()) {
-            // 无设备时隐藏标签栏
+            // 无设备时隐藏标签栏和模拟按钮
             view?.findViewById<View>(R.id.scroll_device_tabs)?.visibility = View.GONE
+            view?.findViewById<View>(R.id.layout_sim)?.visibility = View.GONE
             tvStatus.text = "状态：暂无绑定设备"
             tvTime.text = "请先在\"我的设备\"中绑定盲杖"
             return
         }
 
         view?.findViewById<View>(R.id.scroll_device_tabs)?.visibility = View.VISIBLE
+        view?.findViewById<View>(R.id.layout_sim)?.visibility = View.VISIBLE
 
         // 默认选中第一个设备
         currentDeviceId = devices[0].deviceId
@@ -510,6 +520,201 @@ class MapFragment : Fragment() {
         }
     }
 
+    // ========== 模拟行走模式 ==========
+
+    // 预设虚拟路线：模拟一段约1公里的步行路径（北京某区域）
+    // 每个点为 [纬度, 经度]，间隔约5-15米，模拟正常步行
+    private val simRoute = doubleArrayOf(
+        // 起点
+        39.98420, 116.30530,
+        // 沿路直行
+        39.98430, 116.30540,
+        39.98440, 116.30552,
+        39.98452, 116.30565,
+        39.98465, 116.30578,
+        39.98478, 116.30588,
+        39.98492, 116.30598,
+        39.98505, 116.30608,
+        // 右转
+        39.98512, 116.30622,
+        39.98515, 116.30640,
+        39.98516, 116.30658,
+        39.98515, 116.30675,
+        39.98514, 116.30692,
+        // 直行
+        39.98518, 116.30710,
+        39.98522, 116.30728,
+        39.98525, 116.30745,
+        // 左转
+        39.98532, 116.30758,
+        39.98545, 116.30762,
+        39.98558, 116.30760,
+        39.98572, 116.30758,
+        39.98585, 116.30755,
+        // 直行
+        39.98598, 116.30752,
+        39.98610, 116.30750,
+        39.98622, 116.30748,
+        39.98635, 116.30745,
+        // 右转
+        39.98642, 116.30755,
+        39.98645, 116.30772,
+        39.98646, 116.30790,
+        39.98645, 116.30808,
+        // 左转
+        39.98652, 116.30818,
+        39.98665, 116.30822,
+        39.98680, 116.30825,
+        39.98695, 116.30828,
+        39.98708, 116.30830,
+        // 直行
+        39.98722, 116.30832,
+        39.98735, 116.30830,
+        39.98748, 116.30828,
+        39.98760, 116.30825,
+        // 右转回走
+        39.98765, 116.30812,
+        39.98762, 116.30795,
+        39.98758, 116.30778,
+        39.98755, 116.30760,
+        39.98750, 116.30745,
+        // 绕回起点方向
+        39.98738, 116.30735,
+        39.98722, 116.30728,
+        39.98705, 116.30722,
+        39.98688, 116.30715,
+        39.98672, 116.30708,
+        39.98655, 116.30700,
+        39.98640, 116.30692,
+        39.98625, 116.30682,
+        39.98610, 116.30672,
+        39.98598, 116.30660,
+        39.98585, 116.30648,
+        39.98572, 116.30635,
+        39.98558, 116.30622,
+        39.98545, 116.30610,
+        39.98532, 116.30598,
+        39.98518, 116.30585,
+        39.98505, 116.30572,
+        39.98492, 116.30558,
+        39.98480, 116.30545,
+        // 回到起点附近
+        39.98468, 116.30535,
+        39.98455, 116.30528,
+        39.98442, 116.30522,
+        39.98430, 116.30518,
+        39.98420, 116.30530
+    )
+
+    private fun toggleSimMode() {
+        if (isSimMode) {
+            stopSimMode()
+        } else {
+            startSimMode()
+        }
+    }
+
+    private fun startSimMode() {
+        if (currentDeviceId.isEmpty()) {
+            Toast.makeText(requireContext(), "请先绑定设备", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        isSimMode = true
+        simStepIndex = 0
+
+        // 停止真实轮询
+        pollingTimer?.cancel()
+        pollingTimer = null
+
+        // 退出历史模式（如果在）
+        if (isHistoryMode) {
+            isHistoryMode = false
+            fallHistory.clear()
+            viewRedDot.visibility = View.GONE
+        }
+
+        // 更新按钮图标为停止
+        view?.findViewById<android.widget.ImageButton>(R.id.btn_sim)?.setImageResource(R.drawable.ic_stop)
+
+        // 重置地图状态
+        resetMapState()
+
+        tvStatus.text = "🎮 模拟行走中"
+        tvStatus.setTextColor(resources.getColor(R.color.accent, null))
+
+        // 每3秒生成一个虚拟位置点
+        simTimer = Timer()
+        simTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                if (!isSimMode) return
+                activity?.runOnUiThread { simNextStep() }
+            }
+        }, 0, 3000)
+
+        Toast.makeText(requireContext(), "已开启模拟行走", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopSimMode() {
+        isSimMode = false
+        simTimer?.cancel()
+        simTimer = null
+
+        // 恢复按钮图标为播放
+        view?.findViewById<android.widget.ImageButton>(R.id.btn_sim)?.setImageResource(R.drawable.ic_sim)
+
+        tvStatus.text = "当前状态：模拟已停止"
+        tvStatus.setTextColor(resources.getColor(R.color.text_primary, null))
+
+        // 恢复真实轮询
+        startPollingCloud()
+
+        Toast.makeText(requireContext(), "已停止模拟", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun simNextStep() {
+        if (simStepIndex >= simRoute.size / 2) {
+            // 路线走完，循环
+            simStepIndex = 0
+        }
+
+        val lat = simRoute[simStepIndex * 2]
+        val lon = simRoute[simStepIndex * 2 + 1]
+        val timestamp = System.currentTimeMillis()
+
+        // 随机状态：90%正常，5%跌倒，5%SOS（偶尔触发报警测试）
+        val rand = java.util.Random().nextInt(100)
+        val status = when {
+            rand < 5 -> "FALL"
+            rand < 10 -> "SOS"
+            else -> "Normal"
+        }
+
+        // 通过逆地理编码获取地址后更新UI
+        fetchAddressFromAmap(lon, lat) { address ->
+            activity?.runOnUiThread {
+                if (isSimMode) {
+                    updateUI(lat, lon, status, timestamp, address)
+                    // 检查跌倒状态
+                    val data = JSONObject()
+                    data.put("status", status)
+                    data.put("create_time", timestamp)
+                    data.put("latitude", lat)
+                    data.put("longitude", lon)
+                    checkFallStatus(data, address)
+
+                    // 更新状态显示
+                    if (status == "Normal") {
+                        tvStatus.text = "🎮 模拟行走中"
+                        tvStatus.setTextColor(resources.getColor(R.color.accent, null))
+                    }
+                }
+            }
+        }
+
+        simStepIndex++
+    }
+
     // ========== Fragment 生命周期与 MapView 同步 ==========
 
     override fun onResume() {
@@ -524,12 +729,15 @@ class MapFragment : Fragment() {
         mapView.onPause()
         pollingTimer?.cancel()
         pollingTimer = null
+        simTimer?.cancel()
+        simTimer = null
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         mapView.onDestroy()
         pollingTimer?.cancel()
+        simTimer?.cancel()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
