@@ -118,17 +118,49 @@ class DeviceFragment : Fragment() {
                         if (resJson.getBoolean("success")) {
                             val dataArray = resJson.optJSONArray("data")
                             if (dataArray != null && dataArray.length() > 0) {
+                                // 读取本地已绑定设备列表，用于过滤已本地解绑的设备
+                                val localIds = (prefs.getString("BOUND_DEVICE_IDS", "") ?: "")
+                                    .split(",").filter { it.isNotEmpty() }.toSet()
+
                                 val newList = mutableListOf<DeviceInfo>()
+                                val serverIds = mutableListOf<String>()
                                 for (i in 0 until dataArray.length()) {
                                     val item = dataArray.getJSONObject(i)
                                     val devId = item.optString("deviceId", "")
-                                    newList.add(DeviceInfo(
-                                        deviceId = devId,
-                                        status = item.optString("status", "offline"),
-                                        lastUpdate = item.optString("lastUpdate", "未知"),
-                                        name = getDeviceName(devId)
-                                    ))
+                                    if (devId.isNotEmpty()) serverIds.add(devId)
+                                    // 仅显示本地列表中仍存在的设备（过滤掉已本地解绑的）
+                                    if (devId.isNotEmpty() && (localIds.isEmpty() || devId in localIds)) {
+                                        newList.add(DeviceInfo(
+                                            deviceId = devId,
+                                            status = item.optString("status", "offline"),
+                                            lastUpdate = item.optString("lastUpdate", "未知"),
+                                            name = getDeviceName(devId)
+                                        ))
+                                    }
                                 }
+
+                                // 首次同步：如果本地列表为空但服务端有设备，将服务端设备写入本地
+                                if (localIds.isEmpty() && serverIds.isNotEmpty()) {
+                                    prefs.edit()
+                                        .putString("BOUND_DEVICE_IDS", serverIds.joinToString(","))
+                                        .putString("BOUND_DEVICE_ID", serverIds.first())
+                                        .apply()
+                                    // 重新构建列表（包含所有服务端设备）
+                                    newList.clear()
+                                    for (i in 0 until dataArray.length()) {
+                                        val item = dataArray.getJSONObject(i)
+                                        val devId = item.optString("deviceId", "")
+                                        if (devId.isNotEmpty()) {
+                                            newList.add(DeviceInfo(
+                                                deviceId = devId,
+                                                status = item.optString("status", "offline"),
+                                                lastUpdate = item.optString("lastUpdate", "未知"),
+                                                name = getDeviceName(devId)
+                                            ))
+                                        }
+                                    }
+                                }
+
                                 updateUI(newList)
                             } else {
                                 // 接口成功但无数据，尝试本地
@@ -196,6 +228,45 @@ class DeviceFragment : Fragment() {
     }
 
     private fun unbindDevice(phone: String, deviceId: String, position: Int) {
+        // 先执行本地解绑（移除SharedPreferences记录），确保即使云端不支持解绑也能正常使用
+        removeDeviceLocal(deviceId)
+        // 从列表中移除该设备（带动画）
+        adapter.removeAt(position)
+        // 检查是否全部移除
+        if (deviceList.isEmpty()) {
+            updateUI(emptyList())
+        } else {
+            tvDeviceCount.text = "已绑定 ${deviceList.size} 台设备"
+        }
+        Toast.makeText(requireContext(), "解绑成功", Toast.LENGTH_SHORT).show()
+
+        // 尝试云端解绑（最佳努力，成功更好，失败不影响本地结果）
+        tryCloudUnbind(phone, deviceId)
+    }
+
+    // 本地解绑：从SharedPreferences中移除设备记录
+    private fun removeDeviceLocal(deviceId: String) {
+        val prefs = requireActivity().getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
+        val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+        val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+        idSet.remove(deviceId)
+        val editor = prefs.edit()
+        if (idSet.isEmpty()) {
+            editor.remove("BOUND_DEVICE_IDS").remove("BOUND_DEVICE_ID")
+        } else {
+            editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
+            // 如果移除的是当前主设备，更新主设备为列表中的第一个
+            if (prefs.getString("BOUND_DEVICE_ID", "") == deviceId) {
+                editor.putString("BOUND_DEVICE_ID", idSet.first())
+            }
+        }
+        // 同时清除该设备的自定义名称
+        editor.remove("DEVICE_NAME_$deviceId")
+        editor.apply()
+    }
+
+    // 尝试云端解绑（最佳努力）
+    private fun tryCloudUnbind(phone: String, deviceId: String) {
         val json = JSONObject()
         json.put("action", "unbindDevice")
         json.put("phone", phone)
@@ -208,49 +279,12 @@ class DeviceFragment : Fragment() {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                activity?.runOnUiThread { Toast.makeText(requireContext(), "网络异常", Toast.LENGTH_SHORT).show() }
+                // 云端解绑失败不影响本地结果，仅打印日志
+                android.util.Log.w("DeviceFragment", "云端解绑失败（网络异常）: $deviceId", e)
             }
             override fun onResponse(call: Call, response: Response) {
-                val resStr = response.body?.string()
-                activity?.runOnUiThread {
-                    try {
-                        val resJson = JSONObject(resStr ?: "")
-                        if (resJson.getBoolean("success")) {
-                            Toast.makeText(requireContext(), "解绑成功", Toast.LENGTH_SHORT).show()
-                            // 从多设备列表中移除
-                            val prefs = requireActivity().getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-                            val idsStr = prefs.getString("BOUND_DEVICE_IDS", "") ?: ""
-                            val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
-                            idSet.remove(deviceId)
-                            val editor = prefs.edit()
-                            if (idSet.isEmpty()) {
-                                editor.remove("BOUND_DEVICE_IDS")
-                                editor.remove("BOUND_DEVICE_ID")
-                            } else {
-                                editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
-                                // 如果移除的是当前主设备，更新主设备为列表中的第一个
-                                if (prefs.getString("BOUND_DEVICE_ID", "") == deviceId) {
-                                    editor.putString("BOUND_DEVICE_ID", idSet.first())
-                                }
-                            }
-                            // 同时清除该设备的自定义名称
-                            editor.remove("DEVICE_NAME_$deviceId")
-                            editor.apply()
-                            // 从列表中移除该设备（带动画）
-                            adapter.removeAt(position)
-                            // 检查是否全部移除
-                            if (deviceList.isEmpty()) {
-                                updateUI(emptyList())
-                            } else {
-                                tvDeviceCount.text = "已绑定 ${deviceList.size} 台设备"
-                            }
-                        } else {
-                            Toast.makeText(requireContext(), resJson.optString("msg", "解绑失败"), Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(requireContext(), "数据异常", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                // 云端解绑结果不影响本地，仅打印日志
+                android.util.Log.d("DeviceFragment", "云端解绑响应: ${response.body?.string()}")
             }
         })
     }

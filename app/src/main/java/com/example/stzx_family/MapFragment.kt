@@ -125,17 +125,49 @@ class MapFragment : Fragment() {
                         if (resJson.getBoolean("success")) {
                             val dataArray = resJson.optJSONArray("data")
                             if (dataArray != null && dataArray.length() > 0) {
+                                // 读取本地已绑定设备列表，用于过滤已本地解绑的设备
+                                val localIds = (prefs.getString("BOUND_DEVICE_IDS", "") ?: "")
+                                    .split(",").filter { it.isNotEmpty() }.toSet()
+
                                 val newList = mutableListOf<DeviceInfo>()
+                                val serverIds = mutableListOf<String>()
                                 for (i in 0 until dataArray.length()) {
                                     val item = dataArray.getJSONObject(i)
                                     val devId = item.optString("deviceId", "")
-                                    newList.add(DeviceInfo(
-                                        deviceId = devId,
-                                        status = item.optString("status", "offline"),
-                                        lastUpdate = item.optString("lastUpdate", "未知"),
-                                        name = getDeviceName(devId)
-                                    ))
+                                    if (devId.isNotEmpty()) serverIds.add(devId)
+                                    // 仅显示本地列表中仍存在的设备（过滤掉已本地解绑的）
+                                    if (devId.isNotEmpty() && (localIds.isEmpty() || devId in localIds)) {
+                                        newList.add(DeviceInfo(
+                                            deviceId = devId,
+                                            status = item.optString("status", "offline"),
+                                            lastUpdate = item.optString("lastUpdate", "未知"),
+                                            name = getDeviceName(devId)
+                                        ))
+                                    }
                                 }
+
+                                // 首次同步：如果本地列表为空但服务端有设备，将服务端设备写入本地
+                                if (localIds.isEmpty() && serverIds.isNotEmpty()) {
+                                    prefs.edit()
+                                        .putString("BOUND_DEVICE_IDS", serverIds.joinToString(","))
+                                        .putString("BOUND_DEVICE_ID", serverIds.first())
+                                        .apply()
+                                    // 重新构建列表（包含所有服务端设备）
+                                    newList.clear()
+                                    for (i in 0 until dataArray.length()) {
+                                        val item = dataArray.getJSONObject(i)
+                                        val devId = item.optString("deviceId", "")
+                                        if (devId.isNotEmpty()) {
+                                            newList.add(DeviceInfo(
+                                                deviceId = devId,
+                                                status = item.optString("status", "offline"),
+                                                lastUpdate = item.optString("lastUpdate", "未知"),
+                                                name = getDeviceName(devId)
+                                            ))
+                                        }
+                                    }
+                                }
+
                                 setupDeviceTabs(newList)
                             } else {
                                 loadDeviceListFromLocal()
