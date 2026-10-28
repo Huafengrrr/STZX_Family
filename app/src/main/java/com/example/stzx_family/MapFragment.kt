@@ -24,6 +24,8 @@ import com.amap.api.maps.model.Marker
 import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.Polyline
 import com.amap.api.maps.model.PolylineOptions
+import android.speech.tts.TextToSpeech
+import android.media.MediaPlayer
 import okhttp3.*
 import okhttp3.CacheControl
 import okhttp3.MediaType.Companion.toMediaType
@@ -33,7 +35,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
-class MapFragment : Fragment() {
+class MapFragment : Fragment(), TextToSpeech.OnInitListener {
 
     private val fallHistory = mutableListOf<JSONObject>()
     private lateinit var viewRedDot: View
@@ -66,6 +68,10 @@ class MapFragment : Fragment() {
     private val uniCloudUrl = "https://fc-mp-6aceaf7c-21e7-4eb1-a4f8-8e2bbdb8d479.next.bspapp.com/uploadLocation"
     private val AMAP_WEB_KEY = "66eafa772acc05e7a8e587b4bd69074e"
 
+    // TTS 语音播报相关
+    private var tts: TextToSpeech? = null
+    private var isTtsReady = false
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_map, container, false)
     }
@@ -83,6 +89,14 @@ class MapFragment : Fragment() {
         aMap = mapView.map
         aMap.uiSettings.isZoomControlsEnabled = false
 
+        // 动态获取高德地图审图号（普通地图），依规在界面对外透出
+        val tvApprovalNumber = view.findViewById<TextView>(R.id.tv_approval_number)
+        val approvalNumber = aMap.mapContentApprovalNumber
+        if (!approvalNumber.isNullOrEmpty()) {
+            tvApprovalNumber.text = "审图号：$approvalNumber"
+            tvApprovalNumber.visibility = View.VISIBLE
+        }
+
         // 右上角报警按钮
         view.findViewById<View>(R.id.layout_alarm).setOnClickListener { showFallHistoryDialog() }
         // 右上角历史轨迹按钮：实时模式→直接选日期，历史模式→弹菜单(选新日期/返回实时)
@@ -90,8 +104,11 @@ class MapFragment : Fragment() {
             if (isHistoryMode) showHistoryOrExitMenu() else showDatePicker()
         }
 
-        // 模拟行走按钮
-        view.findViewById<View>(R.id.layout_sim).setOnClickListener { toggleSimMode() }
+        // 模拟行走按钮（点击事件绑定在ImageButton上，避免被内部控件拦截）
+        view.findViewById<android.widget.ImageButton>(R.id.btn_sim).setOnClickListener { toggleSimMode() }
+
+        // 初始化 TTS 语音播报
+        tts = TextToSpeech(requireContext(), this)
 
         // 拉取设备列表并构建标签栏
         fetchDeviceList()
@@ -104,6 +121,11 @@ class MapFragment : Fragment() {
     fun stopPolling() {
         pollingTimer?.cancel()
         pollingTimer = null
+    }
+
+    /** 供外部（MainActivity）调用：刷新设备列表并重新开始轮询 */
+    fun refreshDeviceList() {
+        fetchDeviceList()
     }
 
     // ========== 设备列表与标签栏 ==========
@@ -262,37 +284,64 @@ class MapFragment : Fragment() {
         if (isHistoryMode) return
         if (currentDeviceId.isEmpty()) return
 
-        val urlWithTime = "$uniCloudUrl?deviceId=$currentDeviceId&t=${System.currentTimeMillis()}"
-        val request = Request.Builder().url(urlWithTime).cacheControl(CacheControl.FORCE_NETWORK).get().build()
+        // 🌟 修复：改用 POST 请求（与盲杖端上传格式一致），避免 uniCloud GET 分支解析问题
+        val json = JSONObject().apply {
+            put("action", "fetchLocation")  // 专用查询 action
+            put("deviceId", currentDeviceId)
+        }
+        val requestBody = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url(uniCloudUrl)
+            .post(requestBody)
+            .cacheControl(CacheControl.FORCE_NETWORK)
+            .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                activity?.runOnUiThread { if(!isHistoryMode) tvStatus.text = "状态：网络掉线，正在重连..." }
+                activity?.runOnUiThread {
+                    if (!isHistoryMode) tvStatus.text = "⚠️ 网络异常，正在重连..."
+                }
             }
             override fun onResponse(call: Call, response: Response) {
                 if (isHistoryMode) return
                 val resStr = response.body?.string()
 
-                if (!resStr.isNullOrEmpty()) {
-                    try {
-                        val json = JSONObject(resStr)
-                        if (json.getBoolean("success")) {
-                            val data = json.optJSONObject("data") ?: return
-                            val lat = data.getDouble("latitude")
-                            val lon = data.getDouble("longitude")
-                            val status = data.getString("status")
-                            val timestamp = data.getLong("create_time")
+                if (resStr.isNullOrEmpty()) {
+                    activity?.runOnUiThread {
+                        if (!isHistoryMode) tvStatus.text = "⚠️ 服务器无响应..."
+                    }
+                    return
+                }
+                try {
+                    val json = JSONObject(resStr)
+                    val success = json.optBoolean("success", false)
+                    val data = json.optJSONObject("data")
 
-                            fetchAddressFromAmap(lon, lat) { address ->
-                                activity?.runOnUiThread {
-                                    if (!isHistoryMode) {
-                                        updateUI(lat, lon, status, timestamp, address)
-                                        checkFallStatus(data, address)
-                                    }
+                    if (success && data != null) {
+                        val lat = data.getDouble("latitude")
+                        val lon = data.getDouble("longitude")
+                        val status = data.getString("status")
+                        val timestamp = data.getLong("create_time")
+
+                        fetchAddressFromAmap(lon, lat) { address ->
+                            activity?.runOnUiThread {
+                                if (!isHistoryMode) {
+                                    updateUI(lat, lon, status, timestamp, address)
+                                    checkFallStatus(data, address)
                                 }
                             }
                         }
-                    } catch (e: Exception) { Log.e("FamilyApp", "解析实时数据异常", e) }
+                    } else {
+                        // 有响应但无数据：提示设备暂无上报数据，并显示当前查询的 deviceId 方便排查
+                        activity?.runOnUiThread {
+                            if (!isHistoryMode) tvStatus.text = "⏳ 等待设备上报位置... (${currentDeviceId.takeLast(6)})"
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("FamilyApp", "解析实时数据异常: $resStr", e)
+                    activity?.runOnUiThread {
+                        if (!isHistoryMode) tvStatus.text = "⚠️ 数据解析异常..."
+                    }
                 }
             }
         })
@@ -441,6 +490,47 @@ class MapFragment : Fragment() {
 
     // ========== 跌倒检测 ==========
 
+    // TTS 初始化回调
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            // 设置语言为中文
+            val result = tts?.setLanguage(Locale.CHINESE)
+            isTtsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (!isTtsReady) {
+                // 中文不可用时降级为默认语言
+                tts?.setLanguage(Locale.getDefault())
+                isTtsReady = true
+            }
+        }
+    }
+
+    // 语音播报（统一入口，避免重复播报）
+    private fun speakAlert(message: String) {
+        if (isTtsReady) {
+            // 先停止当前播报，再播报新内容
+            tts?.stop()
+            tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, message.hashCode().toString())
+        }
+    }
+
+    // 音效播报（跌倒和求救使用不同音效）
+    private fun playAlertSound(status: String) {
+        try {
+            val resId = when (status) {
+                "FALL" -> R.raw.alarm_fall  // 跌倒音效：双音交替警报声
+                "SOS" -> R.raw.alarm_sos    // 求救音效：SOS莫尔斯码风格
+                else -> return
+            }
+            val mediaPlayer = MediaPlayer.create(requireContext(), resId)
+            mediaPlayer?.setOnCompletionListener { mp ->
+                mp.release()  // 播放完毕后释放资源
+            }
+            mediaPlayer?.start()
+        } catch (e: Exception) {
+            Log.e("MapFragment", "播放警报音效失败: ${e.message}")
+        }
+    }
+
     private fun checkFallStatus(data: JSONObject, address: String) {
         val status = data.optString("status")
         if (status == "FALL" || status == "SOS") {
@@ -449,6 +539,15 @@ class MapFragment : Fragment() {
             if (fallHistory.isEmpty() || fallHistory.first().getLong("create_time") != currentTimestamp) {
                 data.put("address", address)
                 fallHistory.add(0, data)
+
+                // 触发语音警报 + 音效
+                if (status == "FALL") {
+                    playAlertSound("FALL")
+                    speakAlert("警告！检测到跌倒，请立即查看！")
+                } else {
+                    playAlertSound("SOS")
+                    speakAlert("紧急求救！盲杖用户发起主动求救，请立即查看！")
+                }
             }
         }
     }
@@ -504,11 +603,14 @@ class MapFragment : Fragment() {
         }
 
         if (status == "FALL") {
-            tvStatus.text = "🚨 检测到跌倒！"; tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
+            tvStatus.text = "🚨 检测到跌倒！| 设备: ${currentDeviceId.takeLast(6)}"
+            tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
         } else if (status == "SOS") {
-            tvStatus.text = "🆘 盲杖发起主动求救！"; tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
+            tvStatus.text = "🆘 盲杖发起主动求救！| 设备: ${currentDeviceId.takeLast(6)}"
+            tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
         } else {
-            tvStatus.text = "当前状态：正常行走"; tvStatus.setTextColor(resources.getColor(R.color.status_safe, null))
+            tvStatus.text = "当前状态：正常行走 | 设备: ${currentDeviceId.takeLast(6)}"
+            tvStatus.setTextColor(resources.getColor(R.color.status_safe, null))
         }
 
         if (blindCaneMarker == null) {
@@ -640,7 +742,7 @@ class MapFragment : Fragment() {
         // 重置地图状态
         resetMapState()
 
-        tvStatus.text = "🎮 模拟行走中"
+        tvStatus.text = "🎮 模拟行走中 | 设备: ${currentDeviceId.takeLast(6)}"
         tvStatus.setTextColor(resources.getColor(R.color.accent, null))
 
         // 每3秒生成一个虚拟位置点
@@ -672,6 +774,32 @@ class MapFragment : Fragment() {
         Toast.makeText(requireContext(), "已停止模拟", Toast.LENGTH_SHORT).show()
     }
 
+    // 将模拟位置上传到云端（与盲杖端数据格式一致，方便测试端到端流程）
+    private fun uploadSimLocation(lat: Double, lon: Double, status: String) {
+        if (currentDeviceId.isEmpty()) return
+        val json = JSONObject().apply {
+            put("action", "uploadLocation")  // 云端通用写入 action
+            put("deviceId", currentDeviceId)
+            put("latitude", lat)
+            put("longitude", lon)
+            put("status", status)
+        }
+        val requestBody = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url(uniCloudUrl)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("MapFragment", "模拟位置上传失败: ${e.message}")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                Log.d("MapFragment", "模拟位置上传成功: $currentDeviceId → $lat,$lon status=$status")
+            }
+        })
+    }
+
     private fun simNextStep() {
         if (simStepIndex >= simRoute.size / 2) {
             // 路线走完，循环
@@ -690,6 +818,9 @@ class MapFragment : Fragment() {
             else -> "Normal"
         }
 
+        // 🌟 同步上传到云端：确保云端有测试数据，停止模拟后真实轮询也能查到
+        uploadSimLocation(lat, lon, status)
+
         // 通过逆地理编码获取地址后更新UI
         fetchAddressFromAmap(lon, lat) { address ->
             activity?.runOnUiThread {
@@ -703,10 +834,17 @@ class MapFragment : Fragment() {
                     data.put("longitude", lon)
                     checkFallStatus(data, address)
 
-                    // 更新状态显示
-                    if (status == "Normal") {
-                        tvStatus.text = "🎮 模拟行走中"
-                        tvStatus.setTextColor(resources.getColor(R.color.accent, null))
+                    // 模拟状态变化语音提示
+                    if (status == "FALL") {
+                        tvStatus.text = "🚨 模拟跌倒警报！"
+                        tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
+                        playAlertSound("FALL")
+                        speakAlert("模拟测试：检测到跌倒！")
+                    } else if (status == "SOS") {
+                        tvStatus.text = "🆘 模拟主动求救！"
+                        tvStatus.setTextColor(resources.getColor(R.color.status_danger, null))
+                        playAlertSound("SOS")
+                        speakAlert("模拟测试：主动求救！")
                     }
                 }
             }
@@ -738,6 +876,10 @@ class MapFragment : Fragment() {
         mapView.onDestroy()
         pollingTimer?.cancel()
         simTimer?.cancel()
+        // 释放 TTS 资源
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

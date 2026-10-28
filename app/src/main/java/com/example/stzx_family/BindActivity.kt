@@ -114,8 +114,12 @@ class BindActivity : AppCompatActivity() {
                                         .putString("BOUND_DEVICE_ID", deviceId) // 同时设为主设备，兼容旧逻辑
                                         .apply()
                                 }
+                                // 用 CLEAR_TOP|SINGLE_TOP 复用已有的 MainActivity，
+                                // 不重建 Activity（避免 Fragment 重新 attach 时的闪退）
+                                // 通过 extra 通知 MainActivity 刷新设备列表
                                 val intent = Intent(this@BindActivity, MainActivity::class.java)
-                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                intent.putExtra("refresh_devices", true)
                                 startActivity(intent)
                                 finish()
                             } else {

@@ -112,23 +112,35 @@ class LoginActivity : AppCompatActivity() {
                             if (action == "login") {
                                 // 保存登录状态
                                 val boundId = resJson.optString("bound_device_id", "")
-                                val editor = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE).edit()
-                                    .putString("PHONE", phone)
-                                // 兼容：如果服务器返回单个设备ID，同时加入多设备列表
-                                if (boundId.isNotEmpty()) {
-                                    val loginPrefs = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-                                    val idsStr = loginPrefs.getString("BOUND_DEVICE_IDS", "") ?: ""
-                                    val idSet = idsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
-                                    idSet.add(boundId)
+                                // 优先读取服务端返回的多设备列表（bound_device_ids 数组）
+                                val boundIdsArray = resJson.optJSONArray("bound_device_ids")
+
+                                val loginPrefs = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
+                                val localIdsStr = loginPrefs.getString("BOUND_DEVICE_IDS", "") ?: ""
+                                // 合并：本地已有设备 + 服务端返回的设备（去重）
+                                val idSet = localIdsStr.split(",").filter { it.isNotEmpty() }.toMutableSet()
+
+                                // 解析服务端多设备数组
+                                if (boundIdsArray != null && boundIdsArray.length() > 0) {
+                                    for (i in 0 until boundIdsArray.length()) {
+                                        val id = boundIdsArray.optString(i, "")
+                                        if (id.isNotEmpty()) idSet.add(id)
+                                    }
+                                }
+                                // 兼容旧的单设备字段
+                                if (boundId.isNotEmpty()) idSet.add(boundId)
+
+                                val editor = loginPrefs.edit().putString("PHONE", phone)
+                                if (idSet.isNotEmpty()) {
                                     editor.putString("BOUND_DEVICE_IDS", idSet.joinToString(","))
-                                    editor.putString("BOUND_DEVICE_ID", boundId)
+                                    // 主设备：服务端返回的单设备 > 列表第一个
+                                    val primaryId = if (boundId.isNotEmpty()) boundId else idSet.first()
+                                    editor.putString("BOUND_DEVICE_ID", primaryId)
                                 }
                                 editor.apply()
 
                                 // 路由跳转（清空栈，确保返回键不会回到登录页）
-                                val loginPrefs2 = getSharedPreferences("STZX_PREFS", Context.MODE_PRIVATE)
-                                val hasDevice = boundId.isNotEmpty() ||
-                                        !(loginPrefs2.getString("BOUND_DEVICE_IDS", "")).isNullOrEmpty()
+                                val hasDevice = idSet.isNotEmpty()
                                 val intent = if (hasDevice) {
                                     Intent(this@LoginActivity, MainActivity::class.java)
                                 } else {

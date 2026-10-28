@@ -69,6 +69,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 从 BindActivity / 其他页带着 refresh_devices=true 返回时，刷新设备列表
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("refresh_devices", false)) {
+            // 切换到设备页，让 DeviceFragment.onResume 自动刷新
+            viewPager.currentItem = 1
+            // 同时通知 MapFragment 也刷新（它的 onResume 在可见时会自动触发，
+            // 但如果当前就在 Map 页则手动调用）
+            val mapFragment = supportFragmentManager.fragments
+                .filterIsInstance<MapFragment>()
+                .firstOrNull()
+            mapFragment?.refreshDeviceList()
+        }
+    }
+
     // 供 UserFragment 调用：切换到设备页
     fun switchToDevicePage() {
         viewPager.currentItem = 1
